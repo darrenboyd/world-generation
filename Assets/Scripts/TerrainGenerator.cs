@@ -14,6 +14,8 @@ public class TerrainGenerator : MonoBehaviour {
 	float minHeight;
 	float maxHeight;
 
+	public float groundMinHeight = 0.1f;
+
 	void Start () {
 		// Get the attached terrain component
 		terrain = GetComponent<Terrain>();
@@ -23,18 +25,26 @@ public class TerrainGenerator : MonoBehaviour {
 		xRes = tData.heightmapWidth;
 		yRes = tData.heightmapHeight;
 		heights = tData.GetHeights(0, 0, xRes, yRes);
+		maxHeight = heights[0,0];
+		minHeight = maxHeight;
+
 		Debug.Log ("X * Y: " + xRes + " * " + yRes + " == " + (xRes * yRes));
 
 		Flatten ();
-		Mountain ();
+		DebugHeightmap("After Flatten");
+		GenerateMountains ();
+		DebugHeightmap("After Mountain");
 		DiamondSquare ();
-		SetHeights ();
-		DebugHeightmap();
+		DebugHeightmap("After Diamond Square");
+
+		tData.SetHeights (0, 0, heights);
+
 		AssignSplatMap ();
 	}
 
-	void DebugHeightmap()
+	void DebugHeightmap(string title)
 	{
+		Debug.Log (title);
 		Debug.Log ("Height MIN: " + minHeight);
 		Debug.Log ("Height MAX: " + maxHeight);
 	}
@@ -57,9 +67,15 @@ public class TerrainGenerator : MonoBehaviour {
 
 	void Flatten ()
 	{
-		ForHeightmap((x,y) => SetHeight(x, y, 0f));
+		ForHeightmap((x,y) => {
+			int fromX = Mathf.Min (x, xRes - 1 - x);
+			int fromY = Mathf.Min (y, yRes - 1 - y);
+			int dist = Mathf.Min (fromX, fromY) + 1;
+			SetHeight(x, y, (1f - (1f / (Mathf.Pow((dist / 2f) + 1f, 2f)))) * 0.1f);
+		});
 	}
 
+	// Rise with distance from origin
 	void Shape () {
 		ForHeightmap((x,y) => {
 			Vector2 position = new Vector2((float)x / (float)xRes, (float)y / (float)yRes);
@@ -67,51 +83,56 @@ public class TerrainGenerator : MonoBehaviour {
 		});
 	}
 
-	void Mountain ()
+	void GenerateMountains ()
 	{
 		int x_p = (xRes / 3) * 2;
 		int y_p = (yRes / 3) * 2;
 		int radius = Mathf.Min(xRes, yRes) / 8;
-		Debug.Log("Mountain X: " + x_p);
-		Debug.Log("Mountain Y: " + y_p);
-		Debug.Log("Mountain R: " + radius);
+		BuildMountain (x_p, y_p, radius);
+		BuildMountain (x_p - radius, y_p, radius);
+		BuildMountain (x_p - (radius * 2), y_p - radius, radius);
 
-		Vector2 peak = new Vector2 (x_p, y_p);
-		Vector2 corner = new Vector2(x_p - radius, y_p - radius);
+	}
+	
 
-		float maxDistance = Vector2.Distance(peak, corner);
+	void BuildMountain (int xPeak, int yPeak, int radius)
+	{
+		Debug.Log ("Mountain X*Y (R): " + xPeak + " * " + yPeak + " (" + radius + ")");
 
-		int limit = Mathf.CeilToInt(Mathf.Sqrt(Mathf.Pow(radius, 2) * 2));
+		Vector2 peak = new Vector2 (xPeak, yPeak);
+		float maxHeight = 1f;
+		float minHeight = groundMinHeight;
+		float totalGrade = maxHeight - minHeight;
 
-		for (int x= x_p - limit; x <= x_p + limit; x++)
-		{
-			for (int y= y_p - limit; y <= y_p + limit; y++)
-			{
-				Vector2 pos = new Vector2(x, y);
-				float distance = Mathf.Abs(Vector2.Distance (pos, peak));
-				if (distance > maxDistance)
-					continue;
-				float max = 1f - (distance / maxDistance);
-				float min = max * Random.Range (0.7f, 1.05f);
-				if (min > max)
-					SetHeight(x, y, min);
-				else
-					SetHeight(x, y, Random.Range (min, max));
+		for (int dist=0; dist <= radius; dist++) {
+			for (int x = xPeak - dist; x <= xPeak + dist; x++) {
+				for (int y = yPeak - dist; y <= yPeak + dist; y++) {
+					// Avoid touching the 'corners' to allow a circular base
+					Vector2 pos = new Vector2 (x, y);
+					float distance = Mathf.Abs (Vector2.Distance (pos, peak));
+					if (distance > (float)radius) continue;
+
+					float parabolaFactor = 1f - Mathf.Pow (distance / (float) radius, 2f);
+					float coanFactor     = 1f - (distance / (float) radius);
+					float factor = (parabolaFactor + coanFactor) / 2f;
+					float height = (totalGrade * factor) + minHeight;
+					Random.Range
+
+					SetHeight (x, y, Mathf.Max (height, heights[x,y]));
+				}
 			}
 		}
-
 	}
 
 	void DiamondSquare() {
-		heights = tData.GetHeights(0, 0, xRes, yRes);
-		float dis = 1f;
 
-		// half-step of the square, gets divided immediately.
+		float dis = 0.8f;
+		float roughness = 1f;
 		int hs = xRes - 1;
-		float roughness = 1.2f;
+		hs /= 2;
 
 		do {
-			hs = hs / 2;
+			hs /= 2;
 
 			for (int x = hs; x < xRes; x += (hs * 2)) {
 				for (int y = hs; y < yRes; y += (hs * 2)) {
@@ -129,17 +150,7 @@ public class TerrainGenerator : MonoBehaviour {
 			}
 
 			dis *= Mathf.Pow(2, -roughness);
-		} while (hs > 1);
-	}
-
-	// return a random value between -d and d
-	float RandD(float d) {
-		return ((Random.value * 2f) - 1f) * d;
-	}
-
-	void SetHeights ()
-	{
-		tData.SetHeights (0, 0, heights);
+		} while ( hs > 1 );
 	}
 
 	void SetSquarePoint (int x, int y, int hs, float dis) {
@@ -147,7 +158,7 @@ public class TerrainGenerator : MonoBehaviour {
 		float b = heights[x + hs, y - hs];
 		float c = heights[x - hs, y + hs];
 		float d = heights[x + hs, y + hs];
-		SetHeight(x, y, ((a + b + c + d) / 4f) + RandD(dis));
+		DisplaceHeight(x, y, ((a + b + c + d) / 4f), dis);
 	}
 
 	void SetDiamondPoint (int x, int y, int hs, float dis) {
@@ -174,8 +185,17 @@ public class TerrainGenerator : MonoBehaviour {
 			count += 1f;
 		}
 
-		SetHeight(x, y, (sum / count) + RandD(dis));
+		DisplaceHeight(x, y, (sum / count), dis);
 	}
+
+	void DisplaceHeight(int x, int y, float avg, float dis)
+	{
+//		float curHeight = heights[x, y];
+//		float newHeight = Mathf.Clamp01(avg + Random.Range(-dis, dis));
+//		newHeight = ((curHeight * 4f) + newHeight) / 5f;
+//		SetHeight(x, y, curHeight);
+	}
+	
 
 	static float normalizedHeight (TerrainData terrainData, float y_01, float x_01)
 	{
@@ -202,10 +222,6 @@ public class TerrainGenerator : MonoBehaviour {
 		float[, ,] splatmapData = new float[terrainData.alphamapWidth, terrainData.alphamapHeight, terrainData.alphamapLayers];
 
 
-		float min, max;		
-		min = normalizedSteepness(terrainData, 0, 0);
-		max = min;
-
 		for (int y = 0; y < terrainData.alphamapHeight; y++)
 		{
 			for (int x = 0; x < terrainData.alphamapWidth; x++)
@@ -220,24 +236,30 @@ public class TerrainGenerator : MonoBehaviour {
 				float height = normalizedHeight (terrainData, y_01, x_01);
 
 				float steepness = normalizedSteepness(terrainData, y_01,x_01);
-				if (steepness < min) min = steepness;
-				if (steepness > max) max = steepness;
 
-				
 				// Calculate the normal of the terrain (note this is in normalised coordinates relative to the overall terrain dimensions)
 				// Vector3 normal = terrainData.GetInterpolatedNormal(y_01,x_01);
 
-				// Dirt is more prevalent with height and flatness
-				splatWeights[1] = height * (1f - steepness);
+				if (height < 0.09f) {
+					splatWeights[3] = 1f;
+				} else if (height > 0.8f) {
+					splatWeights[2] = steepness * height;
+					splatWeights[4] = steepness;
+				} else {
+					// The default dirt is constant
+					splatWeights[0] = 0.1f;
+					
+					// The grass is stronger at lower altitudes
+					splatWeights[1] = (1f - Mathf.Pow (height, 2f));
+					
+					// Dirt is stronger at high altitudes.
+					splatWeights[2] = height;
 
-				// The grass is stronger at lower altitudes
-				splatWeights[0] = (1f - Mathf.Pow (height, 3f));
+					// Texture[3] increases with height but only on surfaces facing positive Z axis 
+					// splatWeights[3] = 0f; // height * Mathf.Clamp01(normal.z);
+					
+				}
 
-				// Cliff is stronger when steep
-				splatWeights[2] = steepness;
-
-				// Texture[3] increases with height but only on surfaces facing positive Z axis 
-				// splatWeights[3] = 0f; // height * Mathf.Clamp01(normal.z);
 
 				// Sum of all textures weights must add to 1, so calculate normalization factor from sum of weights
 				float z = splatWeights.Sum();
@@ -253,14 +275,6 @@ public class TerrainGenerator : MonoBehaviour {
 				}
 			}
 		}
-
-		Debug.Log ("MIN: " + min);
-		Debug.Log ("MAX: " + max);
-
-//		for (int i=0; i< 10; i++)
-//		{
-//			Debug.Log ("Clamp01: " + Mathf.Clamp01( Random.Range(min + 1f, max + 1f)));
-//		}
 
 		// Finally assign the new splatmap to the terrainData:
 		terrainData.SetAlphamaps(0, 0, splatmapData);
