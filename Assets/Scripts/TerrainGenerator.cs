@@ -17,6 +17,7 @@ public class TerrainGenerator : MonoBehaviour {
 	public float groundMinHeight = 0.1f;
 
 	void Start () {
+
 		// Get the attached terrain component
 		terrain = GetComponent<Terrain>();
 		
@@ -85,51 +86,31 @@ public class TerrainGenerator : MonoBehaviour {
 
 	void GenerateMountains ()
 	{
-		int x_p = (xRes / 3) * 2;
-		int y_p = (yRes / 3) * 2;
-		int radius = Mathf.Min(xRes, yRes) / 8;
-		BuildMountain (x_p, y_p, radius);
-		BuildMountain (x_p - radius, y_p, radius);
-		BuildMountain (x_p - (radius * 2), y_p - radius, radius);
+		int radius = 64; // Mathf.Min(xRes, yRes) / 8;
 
-	}
-	
+		int yOrig = (yRes / 3) * 2;
+		int xMin = xRes / 3;
+		int xMax = xMin * 2;
 
-	void BuildMountain (int xPeak, int yPeak, int radius)
-	{
-		Debug.Log ("Mountain X*Y (R): " + xPeak + " * " + yPeak + " (" + radius + ")");
+		for (int x_p=xMin; x_p < xMax; x_p += Random.Range (8, 64)) {
+			MountainGenerator gen;
+			gen = new MountainGenerator(radius);
+			gen.maxHeight = 1f;
+			gen.minHeight = 0.1f;
+			gen.Generate();
 
-		Vector2 peak = new Vector2 (xPeak, yPeak);
-		float maxHeight = 1f;
-		float minHeight = groundMinHeight;
-		float totalGrade = maxHeight - minHeight;
-
-		for (int dist=0; dist <= radius; dist++) {
-			for (int x = xPeak - dist; x <= xPeak + dist; x++) {
-				for (int y = yPeak - dist; y <= yPeak + dist; y++) {
-					// Avoid touching the 'corners' to allow a circular base
-					Vector2 pos = new Vector2 (x, y);
-					float distance = Mathf.Abs (Vector2.Distance (pos, peak));
-					if (distance > (float)radius) continue;
-
-					float parabolaFactor = 1f - Mathf.Pow (distance / (float) radius, 2f);
-					float coanFactor     = 1f - (distance / (float) radius);
-					float factor = (parabolaFactor + coanFactor) / 2f;
-					float height = (totalGrade * factor) + minHeight;
-					Random.Range
-
-					SetHeight (x, y, Mathf.Max (height, heights[x,y]));
-				}
-			}
+			gen.ApplyHeights(x_p - radius, Random.Range (-8, 8) + yOrig - radius, (x,y,h) => {
+				SetHeight(x, y, Mathf.Max (heights[x, y], h));
+			});
 		}
 	}
+	
 
 	void DiamondSquare() {
 
 		float dis = 0.8f;
 		float roughness = 1f;
 		int hs = xRes - 1;
-		hs /= 2;
 
 		do {
 			hs /= 2;
